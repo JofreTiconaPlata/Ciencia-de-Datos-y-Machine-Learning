@@ -1,0 +1,52 @@
+PRACTICA DEL PRIMER PARCIAL
+APRENDIZAJE AUTOMÁTICO
+
+I. INTRODUCCIÓN
+[Explicar el propósito del trabajo y los dos datasets utilizados.]
+
+II. OBJETIVOS
+Objetivo general:
+[Completar.]
+
+Objetivos específicos:
+- Analizar y limpiar los datasets.
+- Separar los datos de entrenamiento y prueba.
+- Implementar los modelos seleccionados.
+- Evaluar los resultados mediante métricas.
+
+III. MARCO TEÓRICO
+[Máximo 1 página. Explicar aprendizaje automático y los modelos implementados.]
+
+IV. MARCO REFERENCIAL
+[Describir el contexto de aplicación de Candy y Red Wine.]
+
+V. INGENIERÍA
+
+a) Descripción, ampliación y/o abstracción del problema
+Candy:
+[Describir la predicción de winpercent.]
+
+Red Wine:
+[Describir la clasificación de calidad.]
+
+b) Referencia de las tecnologías a utilizar
+- Python
+- Pandas
+- NumPy
+- Scikit-learn
+- Matplotlib
+
+c) Planteamiento de la solución
+[Explicar flujo: carga -> análisis -> limpieza -> división -> entrenamiento -> predicción -> evaluación.]
+
+d) Implementación del código
+[Explicar el script main.py y añadir capturas/resultados.]
+
+e) Pruebas
+[Incluir las métricas y matriz de confusión generadas en resultados/.]
+
+VI. CONCLUSIONES
+[Redactar conclusiones a partir de los resultados reales.]
+
+VII. BIBLIOGRAFÍA
+[Agregar las fuentes realmente consultadas.]
