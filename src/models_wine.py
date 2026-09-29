@@ -79,7 +79,6 @@ def crear_modelos_wine():
                         kernel="rbf",
                         C=1.0,
                         gamma="scale",
-                        probability=True,
                         random_state=RANDOM_STATE,
                     ),
                 ),

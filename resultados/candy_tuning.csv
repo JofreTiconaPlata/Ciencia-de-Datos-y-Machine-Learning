@@ -1,0 +1,5 @@
+modelo,RMSE_cv_media,RMSE_cv_std,mejores_parametros
+arbol_regresion,11.791022587932947,1.3783585612781193,"{""model__max_depth"": 3, ""model__min_samples_leaf"": 1}"
+regresion_lineal,11.81543077462062,0.8809877966501902,{}
+svr_rbf,12.200171590195032,1.5143765235280675,"{""model__C"": 10.0, ""model__epsilon"": 0.5}"
+mlp_regressor,17.158288148211582,2.5368101886711862,"{""model__alpha"": 0.01, ""model__hidden_layer_sizes"": [32, 16]}"

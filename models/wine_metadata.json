@@ -1,0 +1,30 @@
+{
+  "dataset": "Red Wine",
+  "target": "quality_class",
+  "definicion_target": "1 si quality >= 7; 0 si quality < 7",
+  "modelo": "svc_rbf",
+  "criterio_seleccion": "Mayor F1 medio en validacion cruzada estratificada sobre TRAIN",
+  "cv_f1": 0.5146478772997403,
+  "features": [
+    "fixed acidity",
+    "volatile acidity",
+    "citric acid",
+    "residual sugar",
+    "chlorides",
+    "free sulfur dioxide",
+    "total sulfur dioxide",
+    "density",
+    "pH",
+    "sulphates",
+    "alcohol"
+  ],
+  "metricas_test": {
+    "Accuracy": 0.8051470588235294,
+    "Precision": 0.3918918918918919,
+    "Recall": 0.7837837837837838,
+    "F1-score": 0.5225225225225225,
+    "Balanced Accuracy": 0.7961472110408281,
+    "ROC-AUC": 0.8838412880966072
+  },
+  "random_state": 42
+}

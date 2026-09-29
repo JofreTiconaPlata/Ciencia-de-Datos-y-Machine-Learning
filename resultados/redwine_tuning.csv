@@ -1,0 +1,5 @@
+modelo,F1_cv_media,F1_cv_std,mejores_parametros
+svc_rbf,0.5146478772997403,0.02228020318192258,"{""model__C"": 1.0, ""model__class_weight"": ""balanced""}"
+regresion_logistica,0.5086418727422959,0.01903204450856196,"{""model__C"": 0.1, ""model__class_weight"": ""balanced""}"
+arbol_decision,0.47481591593695854,0.04044603944629753,"{""tree__class_weight"": ""balanced"", ""tree__max_depth"": 3}"
+mlp_classifier,0.4398354160426958,0.05363658073853271,"{""model__alpha"": 0.001, ""model__hidden_layer_sizes"": [32, 16]}"

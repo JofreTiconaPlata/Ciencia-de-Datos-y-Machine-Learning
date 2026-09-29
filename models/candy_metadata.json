@@ -1,0 +1,28 @@
+{
+  "dataset": "Candy",
+  "target": "winpercent",
+  "modelo": "arbol_regresion",
+  "criterio_seleccion": "Menor RMSE medio en validacion cruzada sobre TRAIN",
+  "cv_rmse": 11.791022587932947,
+  "features": [
+    "chocolate",
+    "fruity",
+    "caramel",
+    "peanutyalmondy",
+    "nougat",
+    "crispedricewafer",
+    "hard",
+    "bar",
+    "pluribus",
+    "sugarpercent",
+    "pricepercent"
+  ],
+  "metricas_test": {
+    "MAE": 11.372440214932126,
+    "MSE": 177.02980964071625,
+    "RMSE": 13.305254963386318,
+    "R2": 0.11695535014066061,
+    "MedAE": 9.199761038461538
+  },
+  "python_random_state": 42
+}
