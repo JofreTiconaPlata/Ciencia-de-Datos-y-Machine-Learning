@@ -24,37 +24,91 @@ from src.config import (
     RESULTS_DIR,
     TEST_SIZE,
 )
-from src.data_processing import resumen_limpieza
+from src.data_processing import limpiar_y_documentar
+
+
+# ============================================================
+# VARIABLES PREDICTORAS
+# ============================================================
+
+WINE_FEATURES = [
+    "fixed acidity",
+    "volatile acidity",
+    "citric acid",
+    "residual sugar",
+    "chlorides",
+    "free sulfur dioxide",
+    "total sulfur dioxide",
+    "density",
+    "pH",
+    "sulphates",
+    "alcohol",
+]
 
 
 def ejecutar_wine():
-    print("\n=== DATASET RED WINE ===")
 
-    df = pd.read_csv(
-        DATA_DIR / "winequality-red.csv"
+    print(
+        "\n=== DATASET RED WINE ==="
     )
 
-    print("Dimensiones originales:", df.shape)
-    print("Faltantes:", int(df.isna().sum().sum()))
-    print("Duplicados:", int(df.duplicated().sum()))
+    # --------------------------------------------------------
+    # Carga
+    # --------------------------------------------------------
+    df = pd.read_csv(
+        DATA_DIR
+        / "winequality-red.csv"
+    )
 
-    clean = resumen_limpieza(df, "redwine")
+    print(
+        "Dimensiones originales:",
+        df.shape,
+    )
+
+    print(
+        "Faltantes:",
+        int(df.isna().sum().sum()),
+    )
+
+    print(
+        "Duplicados:",
+        int(df.duplicated().sum()),
+    )
+
+    # --------------------------------------------------------
+    # Limpieza estructural + documentacion
+    # --------------------------------------------------------
+    clean = limpiar_y_documentar(
+        df,
+        nombre="redwine",
+        variables_iqr=WINE_FEATURES,
+    )
 
     clean.to_csv(
-        RESULTS_DIR / "redwine_clean.csv",
+        RESULTS_DIR
+        / "redwine_clean.csv",
         index=False,
     )
 
+    # --------------------------------------------------------
+    # Target binario
+    #
+    # Buena     -> quality >= 7 -> 1
+    # No buena  -> quality < 7  -> 0
+    # --------------------------------------------------------
     clean["quality_class"] = (
         clean["quality"] >= 7
     ).astype(int)
 
-    X = clean.drop(
-        columns=["quality", "quality_class"]
-    )
-
+    # --------------------------------------------------------
+    # Features y target
+    # --------------------------------------------------------
+    X = clean[WINE_FEATURES]
     y = clean["quality_class"]
 
+    # --------------------------------------------------------
+    # Train / Test estratificado
+    # --------------------------------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -63,11 +117,18 @@ def ejecutar_wine():
         stratify=y,
     )
 
+    # --------------------------------------------------------
+    # Pipeline
+    #
+    # La imputacion se aprende SOLAMENTE desde X_train.
+    # --------------------------------------------------------
     model = Pipeline(
         [
             (
                 "imputer",
-                SimpleImputer(strategy="median"),
+                SimpleImputer(
+                    strategy="median"
+                ),
             ),
             (
                 "tree",
@@ -80,10 +141,24 @@ def ejecutar_wine():
         ]
     )
 
-    model.fit(X_train, y_train)
+    # --------------------------------------------------------
+    # Entrenamiento
+    # --------------------------------------------------------
+    model.fit(
+        X_train,
+        y_train,
+    )
 
-    pred = model.predict(X_test)
+    # --------------------------------------------------------
+    # Prediccion
+    # --------------------------------------------------------
+    pred = model.predict(
+        X_test
+    )
 
+    # --------------------------------------------------------
+    # Metricas originales
+    # --------------------------------------------------------
     accuracy = accuracy_score(
         y_test,
         pred,
@@ -125,10 +200,14 @@ def ejecutar_wine():
     )
 
     metrics.to_csv(
-        RESULTS_DIR / "redwine_metricas.csv",
+        RESULTS_DIR
+        / "redwine_metricas.csv",
         index=False,
     )
 
+    # --------------------------------------------------------
+    # Matriz de confusion
+    # --------------------------------------------------------
     cm = confusion_matrix(
         y_test,
         pred,
@@ -149,12 +228,16 @@ def ejecutar_wine():
         / "redwine_matriz_confusion.csv"
     )
 
+    # --------------------------------------------------------
+    # Classification report
+    # --------------------------------------------------------
     with open(
         RESULTS_DIR
         / "redwine_reporte_clasificacion.txt",
         "w",
         encoding="utf-8",
     ) as archivo:
+
         archivo.write(
             classification_report(
                 y_test,
@@ -167,6 +250,9 @@ def ejecutar_wine():
             )
         )
 
+    # --------------------------------------------------------
+    # Grafico matriz de confusion
+    # --------------------------------------------------------
     display = ConfusionMatrixDisplay(
         confusion_matrix=cm,
         display_labels=[
@@ -191,6 +277,9 @@ def ejecutar_wine():
 
     plt.close()
 
+    # --------------------------------------------------------
+    # Visualizacion del arbol
+    # --------------------------------------------------------
     plt.figure(
         figsize=(18, 10)
     )
@@ -214,18 +303,35 @@ def ejecutar_wine():
     plt.tight_layout()
 
     plt.savefig(
-        RESULTS_DIR / "redwine_arbol.png",
+        RESULTS_DIR
+        / "redwine_arbol.png",
         dpi=150,
     )
 
     plt.close()
 
-    print("\nRed Wine - Árbol de decisión")
-    print(metrics.to_string(index=False))
+    # --------------------------------------------------------
+    # Consola
+    # --------------------------------------------------------
+    print(
+        "\nRed Wine - Árbol de decisión"
+    )
 
-    print("\nMatriz de confusión:")
+    print(
+        metrics.to_string(
+            index=False
+        )
+    )
+
+    print(
+        "\nMatriz de confusión:"
+    )
+
     print(cm)
 
+    # --------------------------------------------------------
+    # Resultado reutilizable
+    # --------------------------------------------------------
     return {
         "modelo": model,
         "metricas": metrics,

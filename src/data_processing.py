@@ -12,24 +12,35 @@ def limpiar_y_documentar(
     Realiza la limpieza estructural y documenta el dataset.
 
     Operaciones:
-    1. Cuenta valores faltantes, pero NO los imputa aquí.
-       La imputación se realiza posteriormente dentro del Pipeline
+    1. Detecta y contabiliza valores faltantes, pero NO los imputa aquí.
+       La imputación se realiza posteriormente dentro del Pipeline,
        utilizando únicamente información del conjunto de entrenamiento.
-    2. Elimina filas duplicadas.
-    3. Detecta valores atípicos mediante IQR únicamente en las
-       variables predictoras indicadas.
 
-    Los valores atípicos se reportan, pero no se eliminan.
+    2. Detecta y elimina registros duplicados.
+
+    3. Detecta valores atípicos mediante el rango intercuartílico (IQR)
+       únicamente sobre las variables predictoras indicadas.
+
+    Los valores atípicos se reportan, pero no se eliminan automáticamente.
     """
 
     data = df.copy()
 
     filas_iniciales = len(data)
 
+    # --------------------------------------------------------
     # 1. Valores faltantes
+    # --------------------------------------------------------
     faltantes = int(data.isna().sum().sum())
 
+    # IMPORTANTE:
+    # No se realiza imputacion aqui.
+    # SimpleImputer dentro del Pipeline aprendera los valores
+    # de imputacion solamente a partir de X_train.
+
+    # --------------------------------------------------------
     # 2. Registros duplicados
+    # --------------------------------------------------------
     duplicados = int(data.duplicated().sum())
 
     data = (
@@ -38,10 +49,14 @@ def limpiar_y_documentar(
         .reset_index(drop=True)
     )
 
-    # 3. Detección IQR únicamente sobre predictores numéricos
+    # --------------------------------------------------------
+    # 3. Valores atipicos mediante IQR
+    #    SOLO sobre variables predictoras
+    # --------------------------------------------------------
     atipicos = {}
 
     for columna in variables_iqr:
+
         if columna not in data.columns:
             raise ValueError(
                 f"La variable '{columna}' no existe "
@@ -58,6 +73,7 @@ def limpiar_y_documentar(
 
         if iqr == 0:
             cantidad = 0
+
         else:
             limite_inferior = q1 - 1.5 * iqr
             limite_superior = q3 + 1.5 * iqr
@@ -65,12 +81,16 @@ def limpiar_y_documentar(
             cantidad = int(
                 (
                     (data[columna] < limite_inferior)
-                    | (data[columna] > limite_superior)
+                    |
+                    (data[columna] > limite_superior)
                 ).sum()
             )
 
         atipicos[columna] = cantidad
 
+    # --------------------------------------------------------
+    # Resumen de limpieza
+    # --------------------------------------------------------
     resumen = pd.DataFrame(
         {
             "dataset": [nombre],
@@ -89,6 +109,9 @@ def limpiar_y_documentar(
         index=False,
     )
 
+    # --------------------------------------------------------
+    # Detalle IQR por variable
+    # --------------------------------------------------------
     pd.DataFrame(
         list(atipicos.items()),
         columns=[

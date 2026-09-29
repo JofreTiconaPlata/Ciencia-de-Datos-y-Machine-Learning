@@ -19,29 +19,77 @@ from src.config import (
     RESULTS_DIR,
     TEST_SIZE,
 )
-from src.data_processing import resumen_limpieza
+from src.data_processing import limpiar_y_documentar
+
+
+# ============================================================
+# VARIABLES PREDICTORAS
+# ============================================================
+
+CANDY_FEATURES = [
+    "chocolate",
+    "fruity",
+    "caramel",
+    "peanutyalmondy",
+    "nougat",
+    "crispedricewafer",
+    "hard",
+    "bar",
+    "pluribus",
+    "sugarpercent",
+    "pricepercent",
+]
 
 
 def ejecutar_candy():
+
     print("\n=== DATASET CANDY ===")
 
-    df = pd.read_csv(DATA_DIR / "candy-data.csv")
+    # --------------------------------------------------------
+    # Carga
+    # --------------------------------------------------------
+    df = pd.read_csv(
+        DATA_DIR / "candy-data.csv"
+    )
 
-    print("Dimensiones originales:", df.shape)
-    print("Faltantes:", int(df.isna().sum().sum()))
-    print("Duplicados:", int(df.duplicated().sum()))
+    print(
+        "Dimensiones originales:",
+        df.shape,
+    )
 
-    clean = resumen_limpieza(df, "candy")
+    print(
+        "Faltantes:",
+        int(df.isna().sum().sum()),
+    )
+
+    print(
+        "Duplicados:",
+        int(df.duplicated().sum()),
+    )
+
+    # --------------------------------------------------------
+    # Limpieza estructural + documentacion
+    # --------------------------------------------------------
+    clean = limpiar_y_documentar(
+        df,
+        nombre="candy",
+        variables_iqr=CANDY_FEATURES,
+    )
+
     clean.to_csv(
         RESULTS_DIR / "candy_clean.csv",
         index=False,
     )
 
-    X = clean.drop(
-        columns=["winpercent", "competitorname"]
-    )
+    # --------------------------------------------------------
+    # Features y target
+    # --------------------------------------------------------
+    X = clean[CANDY_FEATURES]
     y = clean["winpercent"]
 
+    # --------------------------------------------------------
+    # Train / Test
+    # --------------------------------------------------------
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
@@ -49,11 +97,18 @@ def ejecutar_candy():
         random_state=RANDOM_STATE,
     )
 
+    # --------------------------------------------------------
+    # Pipeline
+    #
+    # La imputacion se aprende SOLAMENTE desde X_train.
+    # --------------------------------------------------------
     model = Pipeline(
         [
             (
                 "imputer",
-                SimpleImputer(strategy="median"),
+                SimpleImputer(
+                    strategy="median"
+                ),
             ),
             (
                 "scaler",
@@ -66,14 +121,40 @@ def ejecutar_candy():
         ]
     )
 
-    model.fit(X_train, y_train)
+    # --------------------------------------------------------
+    # Entrenamiento
+    # --------------------------------------------------------
+    model.fit(
+        X_train,
+        y_train,
+    )
 
-    pred = model.predict(X_test)
+    # --------------------------------------------------------
+    # Prediccion
+    # --------------------------------------------------------
+    pred = model.predict(
+        X_test
+    )
 
-    mae = mean_absolute_error(y_test, pred)
-    mse = mean_squared_error(y_test, pred)
+    # --------------------------------------------------------
+    # Metricas originales
+    # --------------------------------------------------------
+    mae = mean_absolute_error(
+        y_test,
+        pred,
+    )
+
+    mse = mean_squared_error(
+        y_test,
+        pred,
+    )
+
     rmse = np.sqrt(mse)
-    r2 = r2_score(y_test, pred)
+
+    r2 = r2_score(
+        y_test,
+        pred,
+    )
 
     metrics = pd.DataFrame(
         {
@@ -97,6 +178,9 @@ def ejecutar_candy():
         index=False,
     )
 
+    # --------------------------------------------------------
+    # Predicciones
+    # --------------------------------------------------------
     pd.DataFrame(
         {
             "real": y_test.values,
@@ -107,32 +191,71 @@ def ejecutar_candy():
         index=False,
     )
 
-    plt.figure(figsize=(7, 5))
-    plt.scatter(y_test, pred)
+    # --------------------------------------------------------
+    # Grafico real vs predicho
+    # --------------------------------------------------------
+    plt.figure(
+        figsize=(7, 5)
+    )
 
-    minimo = min(y_test.min(), pred.min())
-    maximo = max(y_test.max(), pred.max())
+    plt.scatter(
+        y_test,
+        pred,
+    )
+
+    minimo = min(
+        y_test.min(),
+        pred.min(),
+    )
+
+    maximo = max(
+        y_test.max(),
+        pred.max(),
+    )
 
     plt.plot(
         [minimo, maximo],
         [minimo, maximo],
     )
 
-    plt.xlabel("Winpercent real")
-    plt.ylabel("Winpercent predicho")
-    plt.title("Candy - Real vs. predicho")
+    plt.xlabel(
+        "Winpercent real"
+    )
+
+    plt.ylabel(
+        "Winpercent predicho"
+    )
+
+    plt.title(
+        "Candy - Real vs. predicho"
+    )
+
     plt.tight_layout()
 
     plt.savefig(
-        RESULTS_DIR / "candy_real_vs_predicho.png",
+        RESULTS_DIR
+        / "candy_real_vs_predicho.png",
         dpi=150,
     )
 
     plt.close()
 
-    print("\nCandy - Regresión lineal")
-    print(metrics.to_string(index=False))
+    # --------------------------------------------------------
+    # Consola
+    # --------------------------------------------------------
+    print(
+        "\nCandy - Regresión lineal"
+    )
 
+    print(
+        metrics.to_string(
+            index=False
+        )
+    )
+
+    # --------------------------------------------------------
+    # Resultado reutilizable
+    # --------------------------------------------------------
     return {
         "modelo": model,
         "metricas": metrics,
