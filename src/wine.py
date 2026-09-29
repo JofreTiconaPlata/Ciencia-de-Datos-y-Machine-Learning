@@ -3,13 +3,9 @@ import pandas as pd
 
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
-    accuracy_score,
     classification_report,
     confusion_matrix,
     ConfusionMatrixDisplay,
-    f1_score,
-    precision_score,
-    recall_score,
 )
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
@@ -25,11 +21,14 @@ from src.config import (
     TEST_SIZE,
 )
 from src.data_processing import limpiar_y_documentar
+from src.evaluation import (
+    comparacion_train_test,
+    dataframe_metricas,
+    metricas_clasificacion,
+    obtener_score_positivo,
+    validacion_cruzada_clasificacion,
+)
 
-
-# ============================================================
-# VARIABLES PREDICTORAS
-# ============================================================
 
 WINE_FEATURES = [
     "fixed acidity",
@@ -52,9 +51,6 @@ def ejecutar_wine():
         "\n=== DATASET RED WINE ==="
     )
 
-    # --------------------------------------------------------
-    # Carga
-    # --------------------------------------------------------
     df = pd.read_csv(
         DATA_DIR
         / "winequality-red.csv"
@@ -75,9 +71,6 @@ def ejecutar_wine():
         int(df.duplicated().sum()),
     )
 
-    # --------------------------------------------------------
-    # Limpieza estructural + documentacion
-    # --------------------------------------------------------
     clean = limpiar_y_documentar(
         df,
         nombre="redwine",
@@ -90,38 +83,23 @@ def ejecutar_wine():
         index=False,
     )
 
-    # --------------------------------------------------------
-    # Target binario
-    #
-    # Buena     -> quality >= 7 -> 1
-    # No buena  -> quality < 7  -> 0
-    # --------------------------------------------------------
     clean["quality_class"] = (
         clean["quality"] >= 7
     ).astype(int)
 
-    # --------------------------------------------------------
-    # Features y target
-    # --------------------------------------------------------
     X = clean[WINE_FEATURES]
     y = clean["quality_class"]
 
-    # --------------------------------------------------------
-    # Train / Test estratificado
-    # --------------------------------------------------------
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
-        stratify=y,
+    X_train, X_test, y_train, y_test = (
+        train_test_split(
+            X,
+            y,
+            test_size=TEST_SIZE,
+            random_state=RANDOM_STATE,
+            stratify=y,
+        )
     )
 
-    # --------------------------------------------------------
-    # Pipeline
-    #
-    # La imputacion se aprende SOLAMENTE desde X_train.
-    # --------------------------------------------------------
     model = Pipeline(
         [
             (
@@ -141,76 +119,122 @@ def ejecutar_wine():
         ]
     )
 
-    # --------------------------------------------------------
-    # Entrenamiento
-    # --------------------------------------------------------
+    # ========================================================
+    # VALIDACION CRUZADA
+    # SOLO sobre TRAIN.
+    # ========================================================
+
+    cv_folds, cv_resumen = (
+        validacion_cruzada_clasificacion(
+            model,
+            X_train,
+            y_train,
+        )
+    )
+
+    # ========================================================
+    # ENTRENAMIENTO DEFINITIVO
+    # ========================================================
+
     model.fit(
         X_train,
         y_train,
     )
 
-    # --------------------------------------------------------
-    # Prediccion
-    # --------------------------------------------------------
-    pred = model.predict(
+    pred_train = model.predict(
+        X_train
+    )
+
+    pred_test = model.predict(
         X_test
     )
 
-    # --------------------------------------------------------
-    # Metricas originales
-    # --------------------------------------------------------
-    accuracy = accuracy_score(
-        y_test,
-        pred,
+    score_train = (
+        obtener_score_positivo(
+            model,
+            X_train,
+        )
     )
 
-    precision = precision_score(
-        y_test,
-        pred,
-        zero_division=0,
+    score_test = (
+        obtener_score_positivo(
+            model,
+            X_test,
+        )
     )
 
-    recall = recall_score(
-        y_test,
-        pred,
-        zero_division=0,
+    metricas_train = (
+        metricas_clasificacion(
+            y_train,
+            pred_train,
+            score_train,
+        )
     )
 
-    f1 = f1_score(
-        y_test,
-        pred,
-        zero_division=0,
+    metricas_test = (
+        metricas_clasificacion(
+            y_test,
+            pred_test,
+            score_test,
+        )
     )
 
-    metrics = pd.DataFrame(
-        {
-            "metrica": [
-                "Accuracy",
-                "Precision",
-                "Recall",
-                "F1-score",
-            ],
-            "valor": [
-                accuracy,
-                precision,
-                recall,
-                f1,
-            ],
-        }
+    df_train = dataframe_metricas(
+        metricas_train
     )
 
-    metrics.to_csv(
+    df_test = dataframe_metricas(
+        metricas_test
+    )
+
+    comparacion = (
+        comparacion_train_test(
+            metricas_train,
+            metricas_test,
+        )
+    )
+
+    # ========================================================
+    # EXPORTACION DE METRICAS
+    # ========================================================
+
+    df_test.to_csv(
         RESULTS_DIR
         / "redwine_metricas.csv",
         index=False,
     )
 
-    # --------------------------------------------------------
-    # Matriz de confusion
-    # --------------------------------------------------------
+    df_train.to_csv(
+        RESULTS_DIR
+        / "redwine_metricas_train.csv",
+        index=False,
+    )
+
+    comparacion.to_csv(
+        RESULTS_DIR
+        / "redwine_comparacion_train_test.csv",
+        index=False,
+    )
+
+    cv_folds.to_csv(
+        RESULTS_DIR
+        / "redwine_validacion_cruzada.csv",
+        index=False,
+    )
+
+    cv_resumen.to_csv(
+        RESULTS_DIR
+        / "redwine_validacion_cruzada_resumen.csv",
+        index=False,
+    )
+
+    # ========================================================
+    # MATRIZ DE CONFUSION
+    # ========================================================
+
     cm = confusion_matrix(
         y_test,
-        pred,
+        pred_test,
     )
 
     pd.DataFrame(
@@ -228,9 +252,10 @@ def ejecutar_wine():
         / "redwine_matriz_confusion.csv"
     )
 
-    # --------------------------------------------------------
-    # Classification report
-    # --------------------------------------------------------
+    # ========================================================
+    # REPORTE
+    # ========================================================
+
     with open(
         RESULTS_DIR
         / "redwine_reporte_clasificacion.txt",
@@ -241,7 +266,7 @@ def ejecutar_wine():
         archivo.write(
             classification_report(
                 y_test,
-                pred,
+                pred_test,
                 target_names=[
                     "No buena",
                     "Buena",
@@ -250,9 +275,10 @@ def ejecutar_wine():
             )
         )
 
-    # --------------------------------------------------------
-    # Grafico matriz de confusion
-    # --------------------------------------------------------
+    # ========================================================
+    # MATRIZ GRAFICA
+    # ========================================================
+
     display = ConfusionMatrixDisplay(
         confusion_matrix=cm,
         display_labels=[
@@ -277,9 +303,10 @@ def ejecutar_wine():
 
     plt.close()
 
-    # --------------------------------------------------------
-    # Visualizacion del arbol
-    # --------------------------------------------------------
+    # ========================================================
+    # ARBOL
+    # ========================================================
+
     plt.figure(
         figsize=(18, 10)
     )
@@ -310,15 +337,27 @@ def ejecutar_wine():
 
     plt.close()
 
-    # --------------------------------------------------------
-    # Consola
-    # --------------------------------------------------------
+    # ========================================================
+    # CONSOLA
+    # ========================================================
+
     print(
-        "\nRed Wine - Árbol de decisión"
+        "\nRed Wine - Árbol de decisión (TEST)"
     )
 
     print(
-        metrics.to_string(
+        df_test.to_string(
+            index=False
+        )
+    )
+
+    print(
+        "\nRed Wine - Validación cruzada "
+        "estratificada 5-fold sobre TRAIN"
+    )
+
+    print(
+        cv_resumen.to_string(
             index=False
         )
     )
@@ -329,16 +368,17 @@ def ejecutar_wine():
 
     print(cm)
 
-    # --------------------------------------------------------
-    # Resultado reutilizable
-    # --------------------------------------------------------
     return {
         "modelo": model,
-        "metricas": metrics,
+        "metricas_train": df_train,
+        "metricas_test": df_test,
+        "comparacion": comparacion,
+        "validacion_folds": cv_folds,
+        "validacion_resumen": cv_resumen,
         "matriz_confusion": cm,
         "X_train": X_train,
         "X_test": X_test,
         "y_train": y_train,
         "y_test": y_test,
-        "predicciones": pred,
+        "predicciones": pred_test,
     }

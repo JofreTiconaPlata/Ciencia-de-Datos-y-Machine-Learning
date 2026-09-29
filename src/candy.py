@@ -1,14 +1,8 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import (
-    mean_absolute_error,
-    mean_squared_error,
-    r2_score,
-)
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -20,11 +14,13 @@ from src.config import (
     TEST_SIZE,
 )
 from src.data_processing import limpiar_y_documentar
+from src.evaluation import (
+    comparacion_train_test,
+    dataframe_metricas,
+    metricas_regresion,
+    validacion_cruzada_regresion,
+)
 
-
-# ============================================================
-# VARIABLES PREDICTORAS
-# ============================================================
 
 CANDY_FEATURES = [
     "chocolate",
@@ -43,11 +39,10 @@ CANDY_FEATURES = [
 
 def ejecutar_candy():
 
-    print("\n=== DATASET CANDY ===")
+    print(
+        "\n=== DATASET CANDY ==="
+    )
 
-    # --------------------------------------------------------
-    # Carga
-    # --------------------------------------------------------
     df = pd.read_csv(
         DATA_DIR / "candy-data.csv"
     )
@@ -67,9 +62,6 @@ def ejecutar_candy():
         int(df.duplicated().sum()),
     )
 
-    # --------------------------------------------------------
-    # Limpieza estructural + documentacion
-    # --------------------------------------------------------
     clean = limpiar_y_documentar(
         df,
         nombre="candy",
@@ -77,31 +69,23 @@ def ejecutar_candy():
     )
 
     clean.to_csv(
-        RESULTS_DIR / "candy_clean.csv",
+        RESULTS_DIR
+        / "candy_clean.csv",
         index=False,
     )
 
-    # --------------------------------------------------------
-    # Features y target
-    # --------------------------------------------------------
     X = clean[CANDY_FEATURES]
     y = clean["winpercent"]
 
-    # --------------------------------------------------------
-    # Train / Test
-    # --------------------------------------------------------
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
+    X_train, X_test, y_train, y_test = (
+        train_test_split(
+            X,
+            y,
+            test_size=TEST_SIZE,
+            random_state=RANDOM_STATE,
+        )
     )
 
-    # --------------------------------------------------------
-    # Pipeline
-    #
-    # La imputacion se aprende SOLAMENTE desde X_train.
-    # --------------------------------------------------------
     model = Pipeline(
         [
             (
@@ -121,96 +105,131 @@ def ejecutar_candy():
         ]
     )
 
-    # --------------------------------------------------------
-    # Entrenamiento
-    # --------------------------------------------------------
+    # ========================================================
+    # VALIDACION CRUZADA
+    # SOLO sobre el conjunto de entrenamiento.
+    # ========================================================
+
+    cv_folds, cv_resumen = (
+        validacion_cruzada_regresion(
+            model,
+            X_train,
+            y_train,
+        )
+    )
+
+    # ========================================================
+    # ENTRENAMIENTO DEFINITIVO DEL HOLDOUT
+    # ========================================================
+
     model.fit(
         X_train,
         y_train,
     )
 
-    # --------------------------------------------------------
-    # Prediccion
-    # --------------------------------------------------------
-    pred = model.predict(
+    pred_train = model.predict(
+        X_train
+    )
+
+    pred_test = model.predict(
         X_test
     )
 
-    # --------------------------------------------------------
-    # Metricas originales
-    # --------------------------------------------------------
-    mae = mean_absolute_error(
-        y_test,
-        pred,
+    metricas_train = (
+        metricas_regresion(
+            y_train,
+            pred_train,
+        )
     )
 
-    mse = mean_squared_error(
-        y_test,
-        pred,
+    metricas_test = (
+        metricas_regresion(
+            y_test,
+            pred_test,
+        )
     )
 
-    rmse = np.sqrt(mse)
-
-    r2 = r2_score(
-        y_test,
-        pred,
+    df_train = dataframe_metricas(
+        metricas_train
     )
 
-    metrics = pd.DataFrame(
-        {
-            "metrica": [
-                "MAE",
-                "MSE",
-                "RMSE",
-                "R2",
-            ],
-            "valor": [
-                mae,
-                mse,
-                rmse,
-                r2,
-            ],
-        }
+    df_test = dataframe_metricas(
+        metricas_test
     )
 
-    metrics.to_csv(
-        RESULTS_DIR / "candy_metricas.csv",
+    comparacion = (
+        comparacion_train_test(
+            metricas_train,
+            metricas_test,
+        )
+    )
+
+    # ========================================================
+    # EXPORTACION
+    # ========================================================
+
+    df_test.to_csv(
+        RESULTS_DIR
+        / "candy_metricas.csv",
         index=False,
     )
 
-    # --------------------------------------------------------
-    # Predicciones
-    # --------------------------------------------------------
+    df_train.to_csv(
+        RESULTS_DIR
+        / "candy_metricas_train.csv",
+        index=False,
+    )
+
+    comparacion.to_csv(
+        RESULTS_DIR
+        / "candy_comparacion_train_test.csv",
+        index=False,
+    )
+
+    cv_folds.to_csv(
+        RESULTS_DIR
+        / "candy_validacion_cruzada.csv",
+        index=False,
+    )
+
+    cv_resumen.to_csv(
+        RESULTS_DIR
+        / "candy_validacion_cruzada_resumen.csv",
+        index=False,
+    )
+
     pd.DataFrame(
         {
             "real": y_test.values,
-            "predicho": pred,
+            "predicho": pred_test,
         }
     ).to_csv(
-        RESULTS_DIR / "candy_predicciones.csv",
+        RESULTS_DIR
+        / "candy_predicciones.csv",
         index=False,
     )
 
-    # --------------------------------------------------------
-    # Grafico real vs predicho
-    # --------------------------------------------------------
+    # ========================================================
+    # GRAFICO
+    # ========================================================
+
     plt.figure(
         figsize=(7, 5)
     )
 
     plt.scatter(
         y_test,
-        pred,
+        pred_test,
     )
 
     minimo = min(
         y_test.min(),
-        pred.min(),
+        pred_test.min(),
     )
 
     maximo = max(
         y_test.max(),
-        pred.max(),
+        pred_test.max(),
     )
 
     plt.plot(
@@ -240,28 +259,41 @@ def ejecutar_candy():
 
     plt.close()
 
-    # --------------------------------------------------------
-    # Consola
-    # --------------------------------------------------------
+    # ========================================================
+    # CONSOLA
+    # ========================================================
+
     print(
-        "\nCandy - Regresión lineal"
+        "\nCandy - Regresión lineal (TEST)"
     )
 
     print(
-        metrics.to_string(
+        df_test.to_string(
             index=False
         )
     )
 
-    # --------------------------------------------------------
-    # Resultado reutilizable
-    # --------------------------------------------------------
+    print(
+        "\nCandy - Validación cruzada "
+        "5-fold sobre TRAIN"
+    )
+
+    print(
+        cv_resumen.to_string(
+            index=False
+        )
+    )
+
     return {
         "modelo": model,
-        "metricas": metrics,
+        "metricas_train": df_train,
+        "metricas_test": df_test,
+        "comparacion": comparacion,
+        "validacion_folds": cv_folds,
+        "validacion_resumen": cv_resumen,
         "X_train": X_train,
         "X_test": X_test,
         "y_train": y_train,
         "y_test": y_test,
-        "predicciones": pred,
+        "predicciones": pred_test,
     }
