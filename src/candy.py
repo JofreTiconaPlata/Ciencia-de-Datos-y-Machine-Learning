@@ -1,11 +1,8 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression
+from sklearn.base import clone
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
 from src.config import (
     DATA_DIR,
@@ -20,6 +17,7 @@ from src.evaluation import (
     metricas_regresion,
     validacion_cruzada_regresion,
 )
+from src.models_candy import crear_modelos_candy
 
 
 CANDY_FEATURES = [
@@ -34,6 +32,15 @@ CANDY_FEATURES = [
     "pluribus",
     "sugarpercent",
     "pricepercent",
+]
+
+
+METRICAS_CANDY = [
+    "MAE",
+    "MSE",
+    "RMSE",
+    "R2",
+    "MedAE",
 ]
 
 
@@ -86,91 +93,244 @@ def ejecutar_candy():
         )
     )
 
-    model = Pipeline(
-        [
-            (
-                "imputer",
-                SimpleImputer(
-                    strategy="median"
-                ),
-            ),
-            (
-                "scaler",
-                StandardScaler(),
-            ),
-            (
-                "regressor",
-                LinearRegression(),
-            ),
-        ]
-    )
+    modelos = crear_modelos_candy()
 
-    # ========================================================
-    # VALIDACION CRUZADA
-    # SOLO sobre el conjunto de entrenamiento.
-    # ========================================================
+    filas_comparacion = []
+    detalle_cv = []
 
-    cv_folds, cv_resumen = (
-        validacion_cruzada_regresion(
-            model,
+    modelos_entrenados = {}
+    predicciones_test = {}
+    metricas_train_modelos = {}
+    metricas_test_modelos = {}
+    resumenes_cv = {}
+    folds_cv = {}
+
+    for nombre, modelo_base in modelos.items():
+
+        print(
+            f"\nEvaluando Candy: {nombre}"
+        )
+
+        # ====================================================
+        # CROSS-VALIDATION EXCLUSIVAMENTE SOBRE TRAIN
+        # ====================================================
+
+        cv_folds, cv_resumen = (
+            validacion_cruzada_regresion(
+                modelo_base,
+                X_train,
+                y_train,
+            )
+        )
+
+        cv_folds.insert(
+            0,
+            "modelo",
+            nombre,
+        )
+
+        detalle_cv.append(
+            cv_folds
+        )
+
+        resumenes_cv[nombre] = (
+            cv_resumen.copy()
+        )
+
+        folds_cv[nombre] = (
+            cv_folds.copy()
+        )
+
+        # ====================================================
+        # ENTRENAMIENTO HOLDOUT
+        # ====================================================
+
+        modelo = clone(
+            modelo_base
+        )
+
+        modelo.fit(
             X_train,
             y_train,
         )
+
+        pred_train = modelo.predict(
+            X_train
+        )
+
+        pred_test = modelo.predict(
+            X_test
+        )
+
+        train_metrics = (
+            metricas_regresion(
+                y_train,
+                pred_train,
+            )
+        )
+
+        test_metrics = (
+            metricas_regresion(
+                y_test,
+                pred_test,
+            )
+        )
+
+        modelos_entrenados[nombre] = (
+            modelo
+        )
+
+        predicciones_test[nombre] = (
+            pred_test
+        )
+
+        metricas_train_modelos[nombre] = (
+            train_metrics
+        )
+
+        metricas_test_modelos[nombre] = (
+            test_metrics
+        )
+
+        cv_index = (
+            cv_resumen
+            .set_index("metrica")
+        )
+
+        fila = {
+            "modelo": nombre,
+        }
+
+        for metrica in METRICAS_CANDY:
+
+            fila[
+                f"{metrica}_train"
+            ] = train_metrics[
+                metrica
+            ]
+
+            fila[
+                f"{metrica}_test"
+            ] = test_metrics[
+                metrica
+            ]
+
+            fila[
+                f"{metrica}_cv_media"
+            ] = cv_index.loc[
+                metrica,
+                "media",
+            ]
+
+            fila[
+                f"{metrica}_cv_std"
+            ] = cv_index.loc[
+                metrica,
+                "desviacion_estandar",
+            ]
+
+        filas_comparacion.append(
+            fila
+        )
+
+    # ========================================================
+    # TABLAS COMPARATIVAS
+    # ========================================================
+
+    comparacion_modelos = pd.DataFrame(
+        filas_comparacion
+    )
+
+    comparacion_modelos.to_csv(
+        RESULTS_DIR
+        / "candy_modelos_comparacion.csv",
+        index=False,
+    )
+
+    pd.concat(
+        detalle_cv,
+        ignore_index=True,
+    ).to_csv(
+        RESULTS_DIR
+        / "candy_modelos_cv_detalle.csv",
+        index=False,
     )
 
     # ========================================================
-    # ENTRENAMIENTO DEFINITIVO DEL HOLDOUT
+    # SELECCION DEL MODELO
+    #
+    # Candy:
+    # minimizar RMSE medio de validacion cruzada.
+    #
+    # TEST NO interviene en la seleccion.
     # ========================================================
 
-    model.fit(
-        X_train,
-        y_train,
+    indice_mejor = (
+        comparacion_modelos[
+            "RMSE_cv_media"
+        ].idxmin()
     )
 
-    pred_train = model.predict(
-        X_train
+    mejor_modelo = (
+        comparacion_modelos.loc[
+            indice_mejor,
+            "modelo",
+        ]
     )
 
-    pred_test = model.predict(
-        X_test
+    mejor_rmse_cv = (
+        comparacion_modelos.loc[
+            indice_mejor,
+            "RMSE_cv_media",
+        ]
     )
 
-    metricas_train = (
-        metricas_regresion(
-            y_train,
-            pred_train,
-        )
+    pd.DataFrame(
+        {
+            "modelo": [
+                mejor_modelo
+            ],
+            "criterio": [
+                "Menor RMSE medio en CV sobre TRAIN"
+            ],
+            "valor_cv": [
+                mejor_rmse_cv
+            ],
+        }
+    ).to_csv(
+        RESULTS_DIR
+        / "candy_modelo_seleccionado.csv",
+        index=False,
     )
 
-    metricas_test = (
-        metricas_regresion(
-            y_test,
-            pred_test,
-        )
-    )
+    # ========================================================
+    # CONSERVAR RESULTADOS HISTORICOS DE REGRESION LINEAL
+    # ========================================================
+
+    baseline = "regresion_lineal"
 
     df_train = dataframe_metricas(
-        metricas_train
+        metricas_train_modelos[
+            baseline
+        ]
     )
 
     df_test = dataframe_metricas(
-        metricas_test
+        metricas_test_modelos[
+            baseline
+        ]
     )
 
-    comparacion = (
-        comparacion_train_test(
-            metricas_train,
-            metricas_test,
-        )
-    )
-
-    # ========================================================
-    # EXPORTACION
-    # ========================================================
-
-    df_test.to_csv(
+    comparacion_train_test(
+        metricas_train_modelos[
+            baseline
+        ],
+        metricas_test_modelos[
+            baseline
+        ],
+    ).to_csv(
         RESULTS_DIR
-        / "candy_metricas.csv",
+        / "candy_comparacion_train_test.csv",
         index=False,
     )
 
@@ -180,19 +340,28 @@ def ejecutar_candy():
         index=False,
     )
 
-    comparacion.to_csv(
+    df_test.to_csv(
         RESULTS_DIR
-        / "candy_comparacion_train_test.csv",
+        / "candy_metricas.csv",
         index=False,
     )
 
-    cv_folds.to_csv(
+    folds_baseline = (
+        folds_cv[baseline]
+        .drop(
+            columns=["modelo"]
+        )
+    )
+
+    folds_baseline.to_csv(
         RESULTS_DIR
         / "candy_validacion_cruzada.csv",
         index=False,
     )
 
-    cv_resumen.to_csv(
+    resumenes_cv[
+        baseline
+    ].to_csv(
         RESULTS_DIR
         / "candy_validacion_cruzada_resumen.csv",
         index=False,
@@ -201,7 +370,11 @@ def ejecutar_candy():
     pd.DataFrame(
         {
             "real": y_test.values,
-            "predicho": pred_test,
+            "predicho": (
+                predicciones_test[
+                    baseline
+                ]
+            ),
         }
     ).to_csv(
         RESULTS_DIR
@@ -210,8 +383,14 @@ def ejecutar_candy():
     )
 
     # ========================================================
-    # GRAFICO
+    # GRAFICO BASELINE
     # ========================================================
+
+    pred_lineal = (
+        predicciones_test[
+            baseline
+        ]
+    )
 
     plt.figure(
         figsize=(7, 5)
@@ -219,17 +398,17 @@ def ejecutar_candy():
 
     plt.scatter(
         y_test,
-        pred_test,
+        pred_lineal,
     )
 
     minimo = min(
         y_test.min(),
-        pred_test.min(),
+        pred_lineal.min(),
     )
 
     maximo = max(
         y_test.max(),
-        pred_test.max(),
+        pred_lineal.max(),
     )
 
     plt.plot(
@@ -246,7 +425,7 @@ def ejecutar_candy():
     )
 
     plt.title(
-        "Candy - Real vs. predicho"
+        "Candy - Regresión lineal: real vs predicho"
     )
 
     plt.tight_layout()
@@ -264,36 +443,45 @@ def ejecutar_candy():
     # ========================================================
 
     print(
-        "\nCandy - Regresión lineal (TEST)"
+        "\nCandy - Comparación de modelos"
     )
 
+    columnas = [
+        "modelo",
+        "RMSE_cv_media",
+        "RMSE_cv_std",
+        "R2_cv_media",
+        "RMSE_test",
+        "R2_test",
+    ]
+
     print(
-        df_test.to_string(
+        comparacion_modelos[
+            columnas
+        ].to_string(
             index=False
         )
     )
 
     print(
-        "\nCandy - Validación cruzada "
-        "5-fold sobre TRAIN"
+        "\nModelo seleccionado por CV:"
     )
 
     print(
-        cv_resumen.to_string(
-            index=False
-        )
+        f"  {mejor_modelo}"
+    )
+
+    print(
+        f"  RMSE CV = "
+        f"{mejor_rmse_cv:.6f}"
     )
 
     return {
-        "modelo": model,
-        "metricas_train": df_train,
-        "metricas_test": df_test,
-        "comparacion": comparacion,
-        "validacion_folds": cv_folds,
-        "validacion_resumen": cv_resumen,
+        "modelos": modelos_entrenados,
+        "comparacion": comparacion_modelos,
+        "modelo_seleccionado": mejor_modelo,
         "X_train": X_train,
         "X_test": X_test,
         "y_train": y_train,
         "y_test": y_test,
-        "predicciones": pred_test,
     }

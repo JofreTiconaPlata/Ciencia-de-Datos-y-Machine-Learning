@@ -1,0 +1,2 @@
+modelo,criterio,valor_cv
+regresion_lineal,Menor RMSE medio en CV sobre TRAIN,11.81543077462062

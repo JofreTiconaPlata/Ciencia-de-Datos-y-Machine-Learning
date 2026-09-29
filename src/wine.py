@@ -1,18 +1,14 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from sklearn.impute import SimpleImputer
+from sklearn.base import clone
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     ConfusionMatrixDisplay,
 )
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.tree import (
-    DecisionTreeClassifier,
-    plot_tree,
-)
+from sklearn.tree import plot_tree
 
 from src.config import (
     DATA_DIR,
@@ -28,6 +24,7 @@ from src.evaluation import (
     obtener_score_positivo,
     validacion_cruzada_clasificacion,
 )
+from src.models_wine import crear_modelos_wine
 
 
 WINE_FEATURES = [
@@ -42,6 +39,16 @@ WINE_FEATURES = [
     "pH",
     "sulphates",
     "alcohol",
+]
+
+
+METRICAS_WINE = [
+    "Accuracy",
+    "Precision",
+    "Recall",
+    "F1-score",
+    "Balanced Accuracy",
+    "ROC-AUC",
 ]
 
 
@@ -100,107 +107,268 @@ def ejecutar_wine():
         )
     )
 
-    model = Pipeline(
-        [
-            (
-                "imputer",
-                SimpleImputer(
-                    strategy="median"
-                ),
-            ),
-            (
-                "tree",
-                DecisionTreeClassifier(
-                    max_depth=5,
-                    min_samples_split=10,
-                    random_state=RANDOM_STATE,
-                ),
-            ),
+    modelos = crear_modelos_wine()
+
+    filas_comparacion = []
+    detalle_cv = []
+
+    modelos_entrenados = {}
+    predicciones_test = {}
+    scores_test = {}
+    metricas_train_modelos = {}
+    metricas_test_modelos = {}
+    resumenes_cv = {}
+    folds_cv = {}
+
+    for nombre, modelo_base in modelos.items():
+
+        print(
+            f"\nEvaluando Red Wine: {nombre}"
+        )
+
+        # ====================================================
+        # CROSS-VALIDATION EXCLUSIVAMENTE SOBRE TRAIN
+        # ====================================================
+
+        cv_folds, cv_resumen = (
+            validacion_cruzada_clasificacion(
+                modelo_base,
+                X_train,
+                y_train,
+            )
+        )
+
+        cv_folds.insert(
+            0,
+            "modelo",
+            nombre,
+        )
+
+        detalle_cv.append(
+            cv_folds
+        )
+
+        resumenes_cv[nombre] = (
+            cv_resumen.copy()
+        )
+
+        folds_cv[nombre] = (
+            cv_folds.copy()
+        )
+
+        # ====================================================
+        # ENTRENAMIENTO HOLDOUT
+        # ====================================================
+
+        modelo = clone(
+            modelo_base
+        )
+
+        modelo.fit(
+            X_train,
+            y_train,
+        )
+
+        pred_train = modelo.predict(
+            X_train
+        )
+
+        pred_test = modelo.predict(
+            X_test
+        )
+
+        score_train = (
+            obtener_score_positivo(
+                modelo,
+                X_train,
+            )
+        )
+
+        score_test = (
+            obtener_score_positivo(
+                modelo,
+                X_test,
+            )
+        )
+
+        train_metrics = (
+            metricas_clasificacion(
+                y_train,
+                pred_train,
+                score_train,
+            )
+        )
+
+        test_metrics = (
+            metricas_clasificacion(
+                y_test,
+                pred_test,
+                score_test,
+            )
+        )
+
+        modelos_entrenados[nombre] = (
+            modelo
+        )
+
+        predicciones_test[nombre] = (
+            pred_test
+        )
+
+        scores_test[nombre] = (
+            score_test
+        )
+
+        metricas_train_modelos[nombre] = (
+            train_metrics
+        )
+
+        metricas_test_modelos[nombre] = (
+            test_metrics
+        )
+
+        cv_index = (
+            cv_resumen
+            .set_index("metrica")
+        )
+
+        fila = {
+            "modelo": nombre,
+        }
+
+        for metrica in METRICAS_WINE:
+
+            fila[
+                f"{metrica}_train"
+            ] = train_metrics[
+                metrica
+            ]
+
+            fila[
+                f"{metrica}_test"
+            ] = test_metrics[
+                metrica
+            ]
+
+            fila[
+                f"{metrica}_cv_media"
+            ] = cv_index.loc[
+                metrica,
+                "media",
+            ]
+
+            fila[
+                f"{metrica}_cv_std"
+            ] = cv_index.loc[
+                metrica,
+                "desviacion_estandar",
+            ]
+
+        filas_comparacion.append(
+            fila
+        )
+
+    # ========================================================
+    # TABLA COMPARATIVA
+    # ========================================================
+
+    comparacion_modelos = pd.DataFrame(
+        filas_comparacion
+    )
+
+    comparacion_modelos.to_csv(
+        RESULTS_DIR
+        / "redwine_modelos_comparacion.csv",
+        index=False,
+    )
+
+    pd.concat(
+        detalle_cv,
+        ignore_index=True,
+    ).to_csv(
+        RESULTS_DIR
+        / "redwine_modelos_cv_detalle.csv",
+        index=False,
+    )
+
+    # ========================================================
+    # SELECCION DEL MODELO
+    #
+    # Debido al desbalance de clases no seleccionamos
+    # por Accuracy.
+    #
+    # Criterio:
+    # mayor F1-score medio en CV sobre TRAIN.
+    #
+    # TEST NO participa en la seleccion.
+    # ========================================================
+
+    indice_mejor = (
+        comparacion_modelos[
+            "F1-score_cv_media"
+        ].idxmax()
+    )
+
+    mejor_modelo = (
+        comparacion_modelos.loc[
+            indice_mejor,
+            "modelo",
         ]
     )
 
-    # ========================================================
-    # VALIDACION CRUZADA
-    # SOLO sobre TRAIN.
-    # ========================================================
+    mejor_f1_cv = (
+        comparacion_modelos.loc[
+            indice_mejor,
+            "F1-score_cv_media",
+        ]
+    )
 
-    cv_folds, cv_resumen = (
-        validacion_cruzada_clasificacion(
-            model,
-            X_train,
-            y_train,
-        )
+    pd.DataFrame(
+        {
+            "modelo": [
+                mejor_modelo
+            ],
+            "criterio": [
+                "Mayor F1-score medio en CV sobre TRAIN"
+            ],
+            "valor_cv": [
+                mejor_f1_cv
+            ],
+        }
+    ).to_csv(
+        RESULTS_DIR
+        / "redwine_modelo_seleccionado.csv",
+        index=False,
     )
 
     # ========================================================
-    # ENTRENAMIENTO DEFINITIVO
+    # CONSERVAR RESULTADOS HISTORICOS DEL ARBOL
     # ========================================================
 
-    model.fit(
-        X_train,
-        y_train,
-    )
-
-    pred_train = model.predict(
-        X_train
-    )
-
-    pred_test = model.predict(
-        X_test
-    )
-
-    score_train = (
-        obtener_score_positivo(
-            model,
-            X_train,
-        )
-    )
-
-    score_test = (
-        obtener_score_positivo(
-            model,
-            X_test,
-        )
-    )
-
-    metricas_train = (
-        metricas_clasificacion(
-            y_train,
-            pred_train,
-            score_train,
-        )
-    )
-
-    metricas_test = (
-        metricas_clasificacion(
-            y_test,
-            pred_test,
-            score_test,
-        )
-    )
+    baseline = "arbol_decision"
 
     df_train = dataframe_metricas(
-        metricas_train
+        metricas_train_modelos[
+            baseline
+        ]
     )
 
     df_test = dataframe_metricas(
-        metricas_test
+        metricas_test_modelos[
+            baseline
+        ]
     )
 
-    comparacion = (
-        comparacion_train_test(
-            metricas_train,
-            metricas_test,
-        )
-    )
-
-    # ========================================================
-    # EXPORTACION DE METRICAS
-    # ========================================================
-
-    df_test.to_csv(
+    comparacion_train_test(
+        metricas_train_modelos[
+            baseline
+        ],
+        metricas_test_modelos[
+            baseline
+        ],
+    ).to_csv(
         RESULTS_DIR
-        / "redwine_metricas.csv",
+        / "redwine_comparacion_train_test.csv",
         index=False,
     )
 
@@ -210,31 +378,46 @@ def ejecutar_wine():
         index=False,
     )
 
-    comparacion.to_csv(
+    df_test.to_csv(
         RESULTS_DIR
-        / "redwine_comparacion_train_test.csv",
+        / "redwine_metricas.csv",
         index=False,
     )
 
-    cv_folds.to_csv(
+    folds_baseline = (
+        folds_cv[baseline]
+        .drop(
+            columns=["modelo"]
+        )
+    )
+
+    folds_baseline.to_csv(
         RESULTS_DIR
         / "redwine_validacion_cruzada.csv",
         index=False,
     )
 
-    cv_resumen.to_csv(
+    resumenes_cv[
+        baseline
+    ].to_csv(
         RESULTS_DIR
         / "redwine_validacion_cruzada_resumen.csv",
         index=False,
     )
 
     # ========================================================
-    # MATRIZ DE CONFUSION
+    # MATRIZ DE CONFUSION BASELINE
     # ========================================================
+
+    pred_tree = (
+        predicciones_test[
+            baseline
+        ]
+    )
 
     cm = confusion_matrix(
         y_test,
-        pred_test,
+        pred_tree,
     )
 
     pd.DataFrame(
@@ -252,10 +435,6 @@ def ejecutar_wine():
         / "redwine_matriz_confusion.csv"
     )
 
-    # ========================================================
-    # REPORTE
-    # ========================================================
-
     with open(
         RESULTS_DIR
         / "redwine_reporte_clasificacion.txt",
@@ -266,7 +445,7 @@ def ejecutar_wine():
         archivo.write(
             classification_report(
                 y_test,
-                pred_test,
+                pred_tree,
                 target_names=[
                     "No buena",
                     "Buena",
@@ -290,7 +469,7 @@ def ejecutar_wine():
     display.plot()
 
     plt.title(
-        "Red Wine - Matriz de confusión"
+        "Red Wine - Árbol de decisión: matriz de confusión"
     )
 
     plt.tight_layout()
@@ -307,12 +486,20 @@ def ejecutar_wine():
     # ARBOL
     # ========================================================
 
+    arbol_pipeline = (
+        modelos_entrenados[
+            baseline
+        ]
+    )
+
     plt.figure(
         figsize=(18, 10)
     )
 
     plot_tree(
-        model.named_steps["tree"],
+        arbol_pipeline.named_steps[
+            "tree"
+        ],
         feature_names=X.columns,
         class_names=[
             "No buena",
@@ -342,43 +529,53 @@ def ejecutar_wine():
     # ========================================================
 
     print(
-        "\nRed Wine - Árbol de decisión (TEST)"
+        "\nRed Wine - Comparación de modelos"
     )
 
+    columnas = [
+        "modelo",
+        "F1-score_cv_media",
+        "F1-score_cv_std",
+        "Balanced Accuracy_cv_media",
+        "ROC-AUC_cv_media",
+        "F1-score_test",
+    ]
+
     print(
-        df_test.to_string(
+        comparacion_modelos[
+            columnas
+        ].to_string(
             index=False
         )
     )
 
     print(
-        "\nRed Wine - Validación cruzada "
-        "estratificada 5-fold sobre TRAIN"
+        "\nModelo seleccionado por CV:"
     )
 
     print(
-        cv_resumen.to_string(
-            index=False
-        )
+        f"  {mejor_modelo}"
     )
 
     print(
-        "\nMatriz de confusión:"
+        f"  F1 CV = "
+        f"{mejor_f1_cv:.6f}"
+    )
+
+    print(
+        "\nMatriz de confusión "
+        "del árbol histórico:"
     )
 
     print(cm)
 
     return {
-        "modelo": model,
-        "metricas_train": df_train,
-        "metricas_test": df_test,
-        "comparacion": comparacion,
-        "validacion_folds": cv_folds,
-        "validacion_resumen": cv_resumen,
-        "matriz_confusion": cm,
+        "modelos": modelos_entrenados,
+        "comparacion": comparacion_modelos,
+        "modelo_seleccionado": mejor_modelo,
+        "matriz_confusion_baseline": cm,
         "X_train": X_train,
         "X_test": X_test,
         "y_train": y_train,
         "y_test": y_test,
-        "predicciones": pred_test,
     }

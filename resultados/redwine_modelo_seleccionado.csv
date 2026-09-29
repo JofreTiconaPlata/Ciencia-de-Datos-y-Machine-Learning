@@ -1,0 +1,2 @@
+modelo,criterio,valor_cv
+mlp_classifier,Mayor F1-score medio en CV sobre TRAIN,0.4398354160426958
